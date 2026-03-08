@@ -4226,6 +4226,7 @@ export default function HomePage() {
                         currentTab={currentTab}
                         favorites={favorites}
                         sortBy={sortBy}
+                        stickyTop={navbarHeight + filterBarHeight - 14}
                         onReorder={handleReorder}
                         onRemoveFund={(row) => {
                           if (refreshing) return;

@@ -108,6 +108,7 @@ export default function MobileFundTable({
   sortBy = 'default',
   onReorder,
   onCustomSettingsChange,
+  stickyTop = 0,
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -293,16 +294,14 @@ export default function MobileFundTable({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
     const handleVerticalScroll = () => {
-      console.log('scrollY', window.scrollY);
-      setShowPortalHeader(window.scrollY >= 100);
+      setShowPortalHeader(window.scrollY >= stickyTop);
     };
 
     handleVerticalScroll();
     window.addEventListener('scroll', handleVerticalScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleVerticalScroll);
-  }, []);
+  }, [stickyTop]);
 
   useEffect(() => {
     const tableEl = tableContainerRef.current;
@@ -323,11 +322,9 @@ export default function MobileFundTable({
   useEffect(() => {
     const tableEl = tableContainerRef.current;
     const portalEl = portalHeaderRef.current;
-    console.log('portalEl', portalEl)
     if (!tableEl || !portalEl) return;
 
     const syncScrollToPortal = () => {
-      console.log('tableEl.scrollLeft', tableEl.scrollLeft)
       portalEl.scrollLeft = tableEl.scrollLeft;
     };
 
@@ -341,11 +338,11 @@ export default function MobileFundTable({
     const handlePortalScroll = () => syncScrollToTable();
 
     tableEl.addEventListener('scroll', handleTableScroll, { passive: true });
-    // portalEl.addEventListener('scroll', handlePortalScroll, { passive: true });
+    portalEl.addEventListener('scroll', handlePortalScroll, { passive: true });
 
     return () => {
       tableEl.removeEventListener('scroll', handleTableScroll);
-      // portalEl.removeEventListener('scroll', handlePortalScroll);
+      portalEl.removeEventListener('scroll', handlePortalScroll);
     };
   }, [showPortalHeader]);
 
@@ -823,7 +820,7 @@ export default function MobileFundTable({
   const renderContent = (onlyShowHeader) => {
     if (onlyShowHeader) {
       return (
-        <div style={{position: 'fixed', top: 175}} className="mobile-fund-table mobile-fund-table-portal-header" ref={portalHeaderRef}>
+        <div style={{position: 'fixed', top: stickyTop}} className="mobile-fund-table mobile-fund-table-portal-header" ref={portalHeaderRef}>
           <div
             className="mobile-fund-table-scroll"
             style={mobileGridLayout.minWidth != null ? { minWidth: mobileGridLayout.minWidth } : undefined}
