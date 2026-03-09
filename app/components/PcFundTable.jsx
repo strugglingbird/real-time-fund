@@ -412,7 +412,12 @@ export default function PcFundTable({
         return;
       }
 
-      setShowPortalHeader(rect.top <= nextStickyTop);
+      const headerEl = tableEl?.querySelector('.table-header-row');
+      const headerHeight = headerEl?.getBoundingClientRect?.().height ?? 0;
+      const hasPassedHeader = (rect.top + headerHeight) <= nextStickyTop;
+      const hasTableInView = rect.bottom > nextStickyTop;
+
+      setShowPortalHeader(hasPassedHeader && hasTableInView);
 
       setPortalHorizontal((prev) => {
         const next = {

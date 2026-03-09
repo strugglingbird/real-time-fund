@@ -354,13 +354,19 @@ export default function MobileFundTable({
       const nextStickyTop = getEffectiveStickyTop();
       setEffectiveStickyTop((prev) => (prev === nextStickyTop ? prev : nextStickyTop));
 
-      const tableRect = tableContainerRef.current?.getBoundingClientRect();
+      const tableEl = tableContainerRef.current;
+      const tableRect = tableEl?.getBoundingClientRect();
       if (!tableRect) {
         setShowPortalHeader(window.scrollY >= nextStickyTop);
         return;
       }
 
-      setShowPortalHeader(tableRect.top <= nextStickyTop);
+      const headerEl = tableEl?.querySelector('.table-header-row');
+      const headerHeight = headerEl?.getBoundingClientRect?.().height ?? 0;
+      const hasPassedHeader = (tableRect.top + headerHeight) <= nextStickyTop;
+      const hasTableInView = tableRect.bottom > nextStickyTop;
+
+      setShowPortalHeader(hasPassedHeader && hasTableInView);
     };
 
     const throttledVerticalUpdate = throttle(updateVerticalState, 1000/60, { leading: true, trailing: true });
