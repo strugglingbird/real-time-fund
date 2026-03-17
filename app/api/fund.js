@@ -341,8 +341,12 @@ export const fetchFundData = async (c) => {
             let name = '';
             let weight = '';
             if (idxCode >= 0 && tds[idxCode]) {
-              const m = tds[idxCode].match(/(\d{6})/);
-              code = m ? m[1] : tds[idxCode];
+              const raw = String(tds[idxCode] || '').trim();
+              const mA = raw.match(/(\d{6})/);
+              const mHK = raw.match(/(\d{5})/);
+              // 海外股票常见为英文代码（如 AAPL / usAAPL / TSLA.US / 0700.HK）
+              const mAlpha = raw.match(/\b([A-Za-z]{1,10})\b/);
+              code = mA ? mA[1] : (mHK ? mHK[1] : (mAlpha ? mAlpha[1].toUpperCase() : raw));
             } else {
               const codeIdx = tds.findIndex(txt => /^\d{6}$/.test(txt));
               if (codeIdx >= 0) code = tds[codeIdx];
@@ -365,20 +369,67 @@ export const fetchFundData = async (c) => {
             }
           }
           holdings = holdings.slice(0, 10);
-          const needQuotes = holdings.filter(h => /^\d{6}$/.test(h.code) || /^\d{5}$/.test(h.code));
+          const normalizeTencentCode = (input) => {
+            const raw = String(input || '').trim();
+            if (!raw) return null;
+            // already normalized tencent styles (normalize prefix casing)
+            const mPref = raw.match(/^(us|hk|sh|sz|bj)(.+)$/i);
+            if (mPref) {
+              const p = mPref[1].toLowerCase();
+              const rest = String(mPref[2] || '').trim();
+              // usAAPL / usIXIC: rest use upper; hk00700 keep digits
+              return `${p}${/^\d+$/.test(rest) ? rest : rest.toUpperCase()}`;
+            }
+            const mSPref = raw.match(/^s_(sh|sz|bj|hk)(.+)$/i);
+            if (mSPref) {
+              const p = mSPref[1].toLowerCase();
+              const rest = String(mSPref[2] || '').trim();
+              return `s_${p}${/^\d+$/.test(rest) ? rest : rest.toUpperCase()}`;
+            }
+
+            // A股/北证
+            if (/^\d{6}$/.test(raw)) {
+              const pfx =
+                raw.startsWith('6') || raw.startsWith('9')
+                  ? 'sh'
+                  : raw.startsWith('4') || raw.startsWith('8')
+                    ? 'bj'
+                    : 'sz';
+              return `s_${pfx}${raw}`;
+            }
+            // 港股（数字）
+            if (/^\d{5}$/.test(raw)) return `s_hk${raw}`;
+
+            // 形如 0700.HK / 00001.HK
+            const mHkDot = raw.match(/^(\d{4,5})\.(?:HK)$/i);
+            if (mHkDot) return `s_hk${mHkDot[1].padStart(5, '0')}`;
+
+            // 形如 AAPL / TSLA.US / AAPL.O / BRK.B（腾讯接口对“.”支持不稳定，优先取主代码）
+            const mUsDot = raw.match(/^([A-Za-z]{1,10})(?:\.[A-Za-z]{1,6})$/);
+            if (mUsDot) return `us${mUsDot[1].toUpperCase()}`;
+            if (/^[A-Za-z]{1,10}$/.test(raw)) return `us${raw.toUpperCase()}`;
+
+            return null;
+          };
+
+          const getTencentVarName = (tencentCode) => {
+            const cd = String(tencentCode || '').trim();
+            if (!cd) return '';
+            // s_* uses v_s_*
+            if (/^s_/i.test(cd)) return `v_${cd}`;
+            // us/hk/sh/sz/bj uses v_{code}
+            return `v_${cd}`;
+          };
+
+          const needQuotes = holdings
+            .map((h) => ({
+              h,
+              tencentCode: normalizeTencentCode(h.code),
+            }))
+            .filter((x) => Boolean(x.tencentCode));
           if (needQuotes.length) {
             try {
-              const tencentCodes = needQuotes.map(h => {
-                const cd = String(h.code || '');
-                if (/^\d{6}$/.test(cd)) {
-                  const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
-                  return `s_${pfx}${cd}`;
-                }
-                if (/^\d{5}$/.test(cd)) {
-                  return `s_hk${cd}`;
-                }
-                return null;
-              }).filter(Boolean).join(',');
+              const tencentCodes = needQuotes.map((x) => x.tencentCode).join(',');
               if (!tencentCodes) {
                 resolveH(holdings);
                 return;
@@ -388,22 +439,15 @@ export const fetchFundData = async (c) => {
                 const scriptQuote = document.createElement('script');
                 scriptQuote.src = quoteUrl;
                 scriptQuote.onload = () => {
-                  needQuotes.forEach(h => {
-                    const cd = String(h.code || '');
-                    let varName = '';
-                    if (/^\d{6}$/.test(cd)) {
-                      const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
-                      varName = `v_s_${pfx}${cd}`;
-                    } else if (/^\d{5}$/.test(cd)) {
-                      varName = `v_s_hk${cd}`;
-                    } else {
-                      return;
-                    }
-                    const dataStr = window[varName];
+                  needQuotes.forEach(({ h, tencentCode }) => {
+                    const varName = getTencentVarName(tencentCode);
+                    const dataStr = varName ? window[varName] : null;
                     if (dataStr) {
                       const parts = dataStr.split('~');
-                      if (parts.length > 5) {
-                        h.change = parseFloat(parts[5]);
+                      const isUS = /^us/i.test(String(tencentCode || ''));
+                      const idx = isUS ? 32 : 5;
+                      if (parts.length > idx) {
+                        h.change = parseFloat(parts[idx]);
                       }
                     }
                   });
